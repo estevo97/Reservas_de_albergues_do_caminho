@@ -1,23 +1,18 @@
-"""Xerador de datos de proba para a rede de albergues Camiño Aberto (ficticia).
+"""Xerador de datos de proba para a rede de albergues Camiño Aberto (ficticia)."""
 
-ESQUELETO DO P1. Xa funciona: xera albergues e mostra un resumo. O resto
-das funcións están marcadas con TODO e, mentres non as completes, avisan
-e devolven unha lista baleira para que o script se poida executar desde o
-primeiro día.
-
-Exemplos (desde a raíz do proxecto):
-  python -m src.xera_datos --sen-carga                    # só xerar e mostrar
-  python -m src.xera_datos --albergues 60 --semente 7 --sen-carga
-  python -m src.xera_datos                                 # xerar e cargar (cando estea feito)
-"""
 import argparse
+import os
 import random
-from datetime import date
+from datetime import date, timedelta
 
+import psycopg2
+from dotenv import load_dotenv
 from faker import Faker
+from pymongo import MongoClient
+
+load_dotenv()
 
 # ------------------------------------------------------------------ catálogos
-# Concellos galegos de cada camiño, en orde de etapas. Podes engadir máis.
 CAMIÑOS = {
     "Francés":   ["Pedrafita do Cebreiro", "Triacastela", "Samos", "Sarria", "Portomarín",
                   "Palas de Rei", "Melide", "Arzúa", "O Pino"],
@@ -31,19 +26,9 @@ NOMES_ALBERGUE = ["Vieiras", "Pedra Miúda", "O Cruceiro", "A Ponte Vella", "Bor
                   "A Xesta", "O Muíño", "Santa Mariña", "O Hórreo", "A Lareira", "Sete Fontes"]
 
 
-def pendente(nome):
-    print(f"  [pendente] {nome}() aínda non está feita")
-    return []
-
-
 # ------------------------------------------------------------------ xeración
 def xera_albergues(n, rng):
-    """EXEMPLO RESOLTO: úsao como modelo para o resto de funcións.
-
-    Devolve unha lista de dicionarios, un por albergue. Todo o azar sae de `rng`
-    (un random.Random), non do módulo `random` directamente: así a semente controla
-    o resultado.
-    """
+    """Devolve unha lista de dicionarios, un por albergue."""
     albergues = []
     for i in range(1, n + 1):
         camino = rng.choice(list(CAMIÑOS))
@@ -60,50 +45,212 @@ def xera_albergues(n, rng):
 
 
 def xera_peregrinos(n, rng, fake):
-    """TODO (primeiro paso): devolve `n` peregrinos.
-
-    Cada peregrino é un dicionario con, polo menos: id, nome, apelidos, documento,
-    email, pais e data_nacemento.
-
-    Pistas:
-      - fake.first_name() e fake.last_name() dan nomes realistas.
-      - Faker(["es_ES", "pt_PT", "de_DE"]) mestura idiomas, pero para saber o país
-        de cada peregrino é máis cómodo ter un Faker por país.
-      - O documento e o email deben ser únicos.
-      - Coidado coa reproducibilidade: fake.date_of_birth() depende da data de hoxe,
-        así que mañá xeraría datos distintos coa mesma semente.
-    """
-    return pendente("xera_peregrinos")
+    """Devolve `n` peregrinos reproducibles con datos únicos."""
+    peregrinos = []
+    paises = ["España", "Portugal", "Francia", "Alemaña", "Italia", "Reino Unido"]
+    
+    for i in range(1, n + 1):
+        pais = rng.choice(paises)
+        doc_num = f"{rng.randint(10000000, 99999999)}{chr(rng.randint(65, 90))}"
+        
+        # Generar data de nacemento reproducible usando o RNG
+        dias_vida = rng.randint(18 * 365, 70 * 365)
+        data_nacemento = date(2026, 1, 1) - timedelta(days=dias_vida)
+        
+        peregrinos.append({
+            "id": i,
+            "nome": fake.first_name(),
+            "apelidos": fake.last_name(),
+            "documento": doc_num,
+            "email": f"peregrino{i}_{rng.randint(1000, 9999)}@{fake.free_email_domain()}",
+            "pais": pais,
+            "data_nacemento": data_nacemento.isoformat()
+        })
+    return peregrinos
 
 
 def xera_reservas(n, albergues, peregrinos, desde, dias, rng):
-    """TODO: devolve ata `n` reservas entre `desde` e `desde + dias - 1`.
+    """Devolve ata `n` reservas respetando límites de capacidade e integridade."""
+    reservas = []
+    
+    # Mapas para controlar ocupación e evitar sobreventa e duplicados
+    ocupacion_albergue = {}   # (albergue_id, data) -> cantidade
+    reservas_peregrino = set() # (peregrino_id, data)
+    
+    capacidad_map = {a["id"]: a["prazas"] for a in albergues}
+    albergue_ids = [a["id"] for a in albergues]
+    peregrino_ids = [p["id"] for p in peregrinos]
+    
+    intentos = 0
+    max_intentos = n * 10
+    id_reserva = 1
+    
+    while len(reservas) < n and intentos < max_intentos:
+        intentos += 1
+        alb_id = rng.choice(albergue_ids)
+        p_id = rng.choice(peregrino_ids)
+        offset_dias = rng.randint(0, dias - 1)
+        data_reserva = desde + timedelta(days=offset_dias)
+        
+        key_alb = (alb_id, data_reserva)
+        key_p = (p_id, data_reserva)
+        
+        # Validar regras de negocio:
+        # 1. Non superar prazas do albergue esa noite
+        if ocupacion_albergue.get(key_alb, 0) >= capacidad_map[alb_id]:
+            continue
+            
+        # 2. Peregrino non pode ter 2 reservas a mesma noite
+        if key_p in reservas_peregrino:
+            continue
+            
+        # Aceptar reserva
+        ocupacion_albergue[key_alb] = ocupacion_albergue.get(key_alb, 0) + 1
+        reservas_peregrino.add(key_p)
+        
+        reservas.append({
+            "id": id_reserva,
+            "albergue_id": alb_id,
+            "peregrino_id": p_id,
+            "data": data_reserva.isoformat()
+        })
+        id_reserva += 1
 
-    Regras do negocio:
-      - Nun albergue, as reservas dunha noite non poden superar as súas prazas.
-      - Un peregrino non pode ter dúas reservas a mesma noite.
-    """
-    return pendente("xera_reservas")
+    return reservas
 
 
 def xera_fichas(albergues, rng, fake):
-    """TODO: devolve unha ficha por albergue para MongoDB.
-
-    Mira o exemplo do enunciado (apartado 4.2): os campos deben variar dun
-    albergue a outro (non todos teñen web, opinións, garaxe para bicis...).
-    """
-    return pendente("xera_fichas")
+    """Devolve fichas detalladas e heteroxéneas para MongoDB."""
+    fichas = []
+    servizos_posibles = ["cociña", "lavadora", "wifi", "almorzo", "ducha_quente", "secadora", "taquilla"]
+    
+    for alb in albergues:
+        ficha = {
+            "albergue_id": alb["id"],
+            "nome": alb["nome"],
+            "camino": alb["camino"],
+            "concello": alb["concello"],
+            "prazas": alb["prazas"],
+            "prezo": alb["prezo"],
+            "servizos": rng.sample(servizos_posibles, k=rng.randint(2, 5)),
+            "horario": {"apertura": "13:00", "peche": f"{rng.randint(21, 23)}:00"}
+        }
+        
+        # Campos variables (público vs privado)
+        if alb["id"] % 2 == 0:
+            ficha.update({
+                "titularidade": "Privada",
+                "contacto": {
+                    "telefono": f"+34 {rng.randint(600000000, 999999999)}",
+                    "web": f"https://{fake.domain_name()}"
+                },
+                "admite_cans": rng.choice([True, False]),
+                "bicicletas": {"garaxe": True, "prazas": rng.randint(4, 15)},
+                "opinions": [
+                    {"autor": fake.first_name(), "nota": rng.randint(3, 5), "texto": "Moi bo albergue, limpo e cómodo."},
+                    {"autor": fake.first_name(), "nota": rng.randint(4, 5), "texto": "Atención excelente por parte do hospitaleiro."}
+                ]
+            })
+        else:
+            ficha.update({
+                "titularidade": "Xunta de Galicia / Pública",
+                "contacto": {"telefono": f"+34 {rng.randint(981000000, 986999999)}"}
+            })
+            
+        fichas.append(ficha)
+    return fichas
 
 
 # ------------------------------------------------------------------ carga
 def carga_postgres(albergues, peregrinos, reservas):
-    """TODO: crea as táboas (ou usa un script SQL de inicio) e insire os datos."""
-    pendente("carga_postgres")
+    """Crea o esquema relacional en PostgreSQL e insire todos os datos."""
+    print("\n Cargando datos en PostgreSQL...")
+    conn = psycopg2.connect(
+        host=os.getenv("PGHOST", "localhost"),
+        port=5432,
+        dbname=os.getenv("POSTGRES_DB", "albergues"),
+        user=os.getenv("POSTGRES_USER", "p1"),
+        password=os.getenv("POSTGRES_PASSWORD", "cambiame")
+    )
+    
+    with conn.cursor() as cur:
+        # Recrear táboas
+        cur.execute("""
+            DROP TABLE IF EXISTS reservas;
+            DROP TABLE IF EXISTS peregrinos;
+            DROP TABLE IF EXISTS albergues;
+
+            CREATE TABLE albergues (
+                id INT PRIMARY KEY,
+                nome VARCHAR(150) NOT NULL,
+                camino VARCHAR(50) NOT NULL,
+                concello VARCHAR(100) NOT NULL,
+                prazas INT NOT NULL,
+                prezo NUMERIC(5,2) NOT NULL
+            );
+
+            CREATE TABLE peregrinos (
+                id INT PRIMARY KEY,
+                nome VARCHAR(100) NOT NULL,
+                apelidos VARCHAR(100) NOT NULL,
+                documento VARCHAR(50) UNIQUE NOT NULL,
+                email VARCHAR(100) UNIQUE NOT NULL,
+                pais VARCHAR(50) NOT NULL,
+                data_nacemento DATE NOT NULL
+            );
+
+            CREATE TABLE reservas (
+                id INT PRIMARY KEY,
+                albergue_id INT REFERENCES albergues(id),
+                peregrino_id INT REFERENCES peregrinos(id),
+                data DATE NOT NULL,
+                UNIQUE(albergue_id, peregrino_id, data)
+            );
+        """)
+
+        # Inserir albergues
+        for a in albergues:
+            cur.execute(
+                "INSERT INTO albergues VALUES (%s, %s, %s, %s, %s, %s);",
+                (a["id"], a["nome"], a["camino"], a["concello"], a["prazas"], a["prezo"])
+            )
+
+        # Inserir peregrinos
+        for p in peregrinos:
+            cur.execute(
+                "INSERT INTO peregrinos VALUES (%s, %s, %s, %s, %s, %s, %s);",
+                (p["id"], p["nome"], p["apelidos"], p["documento"], p["email"], p["pais"], p["data_nacemento"])
+            )
+
+        # Inserir reservas
+        for r in reservas:
+            cur.execute(
+                "INSERT INTO reservas VALUES (%s, %s, %s, %s);",
+                (r["id"], r["albergue_id"], r["peregrino_id"], r["data"])
+            )
+
+    conn.commit()
+    conn.close()
+    print(" PostgreSQL cargado con éxito.")
 
 
 def carga_mongo(fichas):
-    """TODO: garda as fichas nunha colección de MongoDB."""
-    pendente("carga_mongo")
+    """Garda as fichas na colección `fichas` de MongoDB."""
+    print("\n Cargando datos en MongoDB...")
+    user = os.getenv("MONGO_USER", "p1")
+    pwd = os.getenv("MONGO_PASSWORD", "cambiame")
+    host = os.getenv("MONGO_HOST", "localhost")
+    db_name = os.getenv("MONGO_DB", "albergues")
+    
+    client = MongoClient(f"mongodb://{user}:{pwd}@{host}:27017/{db_name}?authSource=admin")
+    db = client[db_name]
+    
+    db.fichas.drop()  # Limpar estado previo
+    if fichas:
+        db.fichas.insert_many(fichas)
+        
+    client.close()
+    print(" MongoDB cargado con éxito.")
 
 
 # ------------------------------------------------------------------ main
@@ -126,8 +273,8 @@ def main():
     args = ap.parse_args()
 
     rng = random.Random(args.semente)
+    Faker.seed(args.semente)
     fake = Faker("es_ES")
-    # TODO: Faker tamén ten a súa propia semente. Sen ela, os nomes cambian en cada execución.
 
     print(f"Semente {args.semente} · tempada {args.desde} + {args.dias} noites")
     albergues = xera_albergues(args.albergues, rng)
