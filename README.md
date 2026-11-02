@@ -1,84 +1,178 @@
-# P1 · Reservas de albergues do Camiño — plantilla
+# Reservas de albergues do camiño
 
-Punto de partida do proxecto. Le antes o enunciado (`BDA_UD1_P1_Reservas_albergues`).
+## Xeración de datos
 
-## Que trae
+O ficheiro `src/xera_datos.py` contén o xerador de datos ficticios para a rede de albergues **Camiño Aberto**. Permite crear información de albergues, peregrinos, reservas e fichas detalladas, empregando as bibliotecas `random` e `Faker`. Faker é unha librería que nos permite crear datos ficticios (nomes, apelidos, emails, etc.)
 
-| Ficheiro | Estado |
-|---|---|
-| `.env.example` | Variables de conexión. Cópiao como `.env` e cambia os contrasinais. |
-| `.gitignore` | Deixa fóra do repositorio `.env`, `copias/` e o contorno virtual. |
-| `requirements.txt` | Librarías de Python con versión fixada. |
-| `src/xera_datos.py` | Esqueleto do xerador. `xera_albergues()` está feita como exemplo; o resto ten `TODO`. |
-| `src/__init__.py` | Fai de `src` un paquete de Python (permite `from src.modulo import ...`). |
+### 1. Catálogos
 
-Todo o demais (`compose.yaml`, esquema da base de datos, código de Redis, copias, README final) facédelo vós.
+Defínense dous catálogos iniciais:
 
-## Estrutura do repositorio
+- `CAMIÑOS`: contén cinco rutas do Camiño de Santiago (Francés, Portugués, Norte, Primitivo e Inglés), xunto cos concellos correspondentes a cada unha.
+- `NOMES_ALBERGUE`: lista de nomes ficticios utilizados para crear os nomes dos albergues.
 
-Mantede sempre esta estrutura:
+### 2. Funcións de xeración
 
-```text
-p1-albergues/
-├── app.py            (opcional) aplicación principal; tamén pode chamarse main.py
-├── compose.yaml
-├── .env.example
-├── requirements.txt
-├── README.md
-└── src/              todo o resto do código: módulos de Python e scripts (.py, .sh)
-    ├── __init__.py
-    └── xera_datos.py
-```
+O xerador está dividido en catro funcións principais:
 
-- Na raíz só van a configuración, o README e, se o hai, o punto de entrada (`app.py` ou `main.py`).
-- Os scripts execútanse **desde a raíz**: `python -m src.xera_datos`, `python app.py …`, `./src/copia.sh`.
-- Entre módulos de `src`, importade co prefixo do paquete: `from src.conexions import postgres`.
+- **`xera_albergues(n, rng)`**: xera o número de albergues indicado. Cada rexistro inclúe un identificador único, nome, camiño, concello, número de prazas (entre 8 e 60) e prezo por noite (entre 10 e 22 euros).
 
-## Primeiros pasos
+- **`xera_peregrinos(n, rng, fake)`**: xera os peregrinos con datos ficticios, incluíndo nome, apelidos, documento de identidade, correo electrónico, país e data de nacemento. Os identificadores son únicos e os datos persoais son xerados mediante `Faker`.
 
-O proxecto é **por parellas** e entrégase **só** no repositorio de GitHub.
+- **`xera_reservas(n, albergues, peregrinos, desde, dias, rng)`**: xera ata o número de reservas solicitado para un período determinado. A función controla a ocupación de cada albergue e evita superar a súa capacidade. Tamén impide que un mesmo peregrino teña máis dunha reserva na mesma noite. Se non é posible alcanzar o número solicitado dentro do límite de intentos establecido, devolve as reservas xeradas ata ese momento.
 
-```bash
-# 1. UN membro: crea un repositorio baleiro en GitHub (sen README) e sube a plantilla (acceso por SSH)
-git init -b main
-git add . && git commit -m "Plantilla P1"
-git remote add origin git@github.com:USUARIO/p1-albergues.git
-git push -u origin main
-#    En GitHub › Settings › Collaborators: convida á túa parella
-#    (e ao docente, se o repositorio é privado)
+- **`xera_fichas(albergues, rng, fake)`**: crea unha ficha detallada por cada albergue, destinada a almacenar información non estruturada. Inclúe servizos, horarios e datos xerais. Ademais, xera campos diferentes segundo a titularidade do establecemento: os albergues privados incorporan información adicional sobre contacto, admisión de cans, aparcadoiro de bicicletas e opinións, mentres que os públicos teñen unha ficha máis sinxela.
 
-# 2. O OUTRO membro: clona o repositorio
-git clone git@github.com:USUARIO/p1-albergues.git
+### 3. Control da xeración aleatoria
 
-# 3. Os dous: contorno virtual e dependencias
-python -m venv .venv
-source .venv/bin/activate          # en Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+O programa utiliza unha semente aleatoria (`--semente`) para controlar a xeración dos datos. Emprega `random.Random()` para os valores aleatorios e `Faker.seed()` para os datos ficticios.
 
-# 4. Executade o xerador: xa funciona, aínda que só xera albergues
-python -m src.xera_datos --sen-carga
-```
+Deste xeito, ao empregar a mesma semente e os mesmos parámetros, pódense reproducir os resultados obtidos en diferentes execucións.
 
-Seguinte paso: completar `xera_peregrinos()`.
+### 4. Parámetros de execución
 
-## Comprobar a reproducibilidade
+O programa permite configurar a xeración mediante argumentos da liña de comandos:
 
-Executade o xerador dúas veces coa mesma semente e comparade:
+| Parámetro | Valor por defecto | Descrición |
+|---|---:|---|
+| `--albergues` | 40 | Número de albergues. |
+| `--peregrinos` | 1500 | Número de peregrinos. |
+| `--reservas` | 5000 | Número máximo de reservas. |
+| `--semente` | 42 | Semente para reproducir os datos. |
+| `--desde` | 2027-05-01 | Data de inicio da tempada. |
+| `--dias` | 30 | Duración da tempada en noites. |
+| `--sen-carga` | — | Xera e mostra os datos sen inserilos nas bases de datos. |
+
+Os resultados móstranse por consola, indicando o número de rexistros xerados e algúns exemplos de cada tipo.
+
+### Reproducibilidade do xerador de datos
+
+Para comprobar que o xerador produce os mesmos datos cando se utiliza a mesma semente aleatoria, executouse dúas veces co parámetro `--semente 7` e coa opción `--sen-carga`, que evita a inserción dos datos nas bases de datos.
 
 ```bash
 python -m src.xera_datos --sen-carga --semente 7 > a.txt
 python -m src.xera_datos --sen-carga --semente 7 > b.txt
+```
+
+A continuación, comparáronse os dous ficheiros mediante o comando `diff`:
+
+```bash
 diff a.txt b.txt && echo "Reproducible"
 ```
 
-## Orde recomendada
+**Resultado obtido:**
 
-1. `xera_peregrinos()`, `xera_reservas()` e `xera_fichas()` con `--sen-carga`.
-2. `compose.yaml` con PostgreSQL e Redis (podedes partir do do obradoiro).
-3. Esquema de PostgreSQL e `carga_postgres()`.
-4. Redis: contadores, `reservar()`, proba de sobreventa e caché.
-5. MongoDB (verase máis adiante): servizo no compose e `carga_mongo()`.
-6. `src/copia.sh` e proba de restauración.
-7. Medicións e README.
+```text
+Reproducible
+```
 
-Facede un *commit* ao rematar cada paso: se algo se rompe, podedes volver atrás.
+Como o comando `diff` non detectou diferenzas entre os ficheiros, comprobouse que o xerador produce a mesma saída nas dúas execucións cando se utiliza a mesma semente. Polo tanto, os resultados son reproducibles.
+
+## Carga de datos
+
+O xerador permite cargar os datos ficticios nas bases de datos de PostgreSQL e de MongoDB. Primeiro de todo, iniciamos
+os contedores executando o docker compose co seguinte script: 
+
+`docker compose up`
+
+Unha vez inicializados, executamos de maneira xenérica `xera_datos.py` (sen o argumento `--sen-carga`) e obtemos:
+
+- Táboas de albergues, peregrinos e reservas en `PostgreSQL`, con seus datos ficticios xa insertados.
+- Colección de fichas en `MongoDB`.
+
+### Comprobación da carga en PostgreSQL
+
+Queremos comprobar que os datos se inseriron correctamente. Para iso, accedemos á base de datos mediante o seguinte comando:
+
+```bash
+docker compose exec postgres psql -U p1 -d albergues
+```
+
+Unha vez dentro de PostgreSQL, comprobamos que se crearon correctamente as tres táboas do proxecto:
+
+```sql
+\dt
+```
+
+O resultado mostra as táboas `albergues`, `peregrinos` e `reservas`.
+
+**Comprobación do número de rexistros**
+
+A continuación, utilizamos `COUNT(*)` para comprobar o número de rexistros almacenados en cada táboa:
+
+```sql
+SELECT COUNT(*) FROM albergues;
+SELECT COUNT(*) FROM peregrinos;
+SELECT COUNT(*) FROM reservas;
+```
+
+Os resultados obtidos son os seguintes:
+
+| Táboa | Número de rexistros |
+|---|---:|
+| albergues | 40 |
+| peregrinos | 1.500 |
+| reservas | 5.000 |
+| **Total** | **6.540** |
+
+Os resultados coinciden coas cantidades previstas na xeración de datos.
+
+**Comprobación do contido das táboas**
+
+Para verificar que os datos se almacenaron correctamente e que os campos conteñen información, consultamos os cinco primeiros rexistros das táboas.
+
+Na táboa `albergues`:
+
+```sql
+SELECT * FROM albergues LIMIT 5;
+```
+
+Esta consulta permite visualizar información como o nome do albergue, o Camiño ao que pertence, o concello, o número de prazas e o prezo.
+
+Na táboa `peregrinos`:
+
+```sql
+SELECT * FROM peregrinos LIMIT 5;
+```
+
+A consulta permite visualizar os datos identificativos dos peregrinos, incluíndo o nome, os apelidos, o documento de identidade, o correo electrónico, o país de procedencia e a data de nacemento.
+
+Na táboa `reservas`:
+
+```sql
+SELECT * FROM reservas LIMIT 5;
+```
+
+Esta consulta permite comprobar o contido das reservas e visualizar os datos asociados a cada unha delas.
+
+Os resultados destas consultas permiten verificar que os rexistros conteñen información e que se recuperan correctamente desde PostgreSQL.
+
+**Comprobación da integridade referencial**
+
+Finalmente, comprobamos que todas as reservas teñen asociado un albergue e un peregrino existentes.
+
+Primeiro, verificamos que non existen reservas asociadas a albergues inexistentes:
+
+```sql
+SELECT COUNT(*)
+FROM reservas r
+LEFT JOIN albergues a ON r.albergue_id = a.id
+WHERE a.id IS NULL;
+```
+
+Despois, realizamos a mesma comprobación cos peregrinos:
+
+```sql
+SELECT COUNT(*)
+FROM reservas r
+LEFT JOIN peregrinos p ON r.peregrino_id = p.id
+WHERE p.id IS NULL;
+```
+
+En ambas as consultas obtivemos un resultado de `0` rexistros sen correspondencia.
+
+Polo tanto, confirmamos que as 5.000 reservas están correctamente relacionadas cos albergues e cos peregrinos existentes.
+
+**Conclusión**
+
+As comprobacións realizadas permiten confirmar que a carga inicial en PostgreSQL se executou correctamente: as tres táboas existen, conteñen o número esperado de rexistros e as relacións entre reservas, albergues e peregrinos son coherentes.

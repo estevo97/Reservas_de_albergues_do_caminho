@@ -1,0 +1,16 @@
+Semente 7 · tempada 2027-05-01 + 30 noites
+
+Albergues: 40
+  {'id': 1, 'nome': 'Albergue O Muíño (Lourenzá)', 'camino': 'Norte', 'concello': 'Lourenzá', 'prazas': 49, 'prezo': 10.0}
+  {'id': 2, 'nome': 'Albergue A Ponte Vella (O Pino)', 'camino': 'Francés', 'concello': 'O Pino', 'prazas': 31, 'prezo': 19.0}
+
+Peregrinos: 1500
+  {'id': 1, 'nome': 'Moisés', 'apelidos': 'Contreras', 'documento': '60496650E', 'email': 'peregrino1_6691@yahoo.com', 'pais': 'Italia', 'data_nacemento': '1985-05-21'}
+  {'id': 2, 'nome': 'Florina', 'apelidos': 'Asensio', 'documento': '58877189P', 'email': 'peregrino2_2889@gmail.com', 'pais': 'Italia', 'data_nacemento': '1996-12-29'}
+
+Reservas: 5000
+  {'id': 1, 'albergue_id': 13, 'peregrino_id': 768, 'data': '2027-05-22'}
+  {'id': 2, 'albergue_id': 36, 'peregrino_id': 1332, 'data': '2027-05-10'}
+
+Fichas: 40
+  {'albergue_id': 1, 'nome': 'Albergue O Muíño (Lourenzá)', 'camino': 'Norte', 'concello': 'Lourenzá', 'prazas': 49, 'prezo': 10.0, 'servizos': ['lavadora', 'wifi', 'taquilla', 'ducha_quente'], 'horario': {'apertura': '13:00', 'peche': '21:00'}, 'titularidade': 'Xunta de Galicia / Pública', 'contacto': {'telefono': '+34 986455115'}}
