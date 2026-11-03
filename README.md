@@ -176,3 +176,63 @@ Polo tanto, confirmamos que as 5.000 reservas están correctamente relacionadas 
 **Conclusión**
 
 As comprobacións realizadas permiten confirmar que a carga inicial en PostgreSQL se executou correctamente: as tres táboas existen, conteñen o número esperado de rexistros e as relacións entre reservas, albergues e peregrinos son coherentes.
+
+### Comprobación da carga en MongoDB
+
+Para comprobar que as fichas dos albergues se almacenaron correctamente en MongoDB, accedemos á consola do contedor:
+
+```bash
+docker exec -it albergues-mongodb mongosh -u p1 -p '***************************' --authenticationDatabase admin albergues
+```
+
+Unha vez dentro, comprobamos as coleccións existentes:
+
+```javascript
+show collections
+```
+
+O resultado amosa a colección `fichas`.
+
+**Comprobación do número de documentos**
+
+```javascript
+db.fichas.countDocuments()
+```
+
+Resultado:
+
+```text
+40
+```
+
+Confírmase que se almacenaron 40 documentos, un por cada albergue.
+
+**Consulta dun documento de exemplo**
+
+```javascript
+db.fichas.findOne()
+```
+
+A consulta devolve un documento coa seguinte estrutura:
+
+```javascript
+{
+  albergue_id: 1,
+  nome: 'Albergue A Estrela (Pedrafita do Cebreiro)',
+  camino: 'Francés',
+  concello: 'Pedrafita do Cebreiro',
+  prazas: 23,
+  prezo: 13,
+  servizos: ['lavadora', 'cociña'],
+  horario: {
+    apertura: '13:00',
+    peche: '23:00'
+  },
+  titularidade: 'Xunta de Galicia / Pública',
+  contacto: {
+    telefono: '+34 986532546'
+  }
+}
+```
+
+**Conclusión:** a comprobación confirma que MongoDB contén a colección `fichas` cos 40 documentos esperados. Os datos inclúen información dos albergues, servizos, horarios e contacto, empregando estruturas anidadas e arrays para representar información flexible.
