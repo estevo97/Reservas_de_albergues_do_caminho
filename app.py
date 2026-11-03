@@ -5,6 +5,7 @@ import psycopg2
 
 from datetime import date, timedelta
 from dotenv import load_dotenv
+import json
 
 
 # Cargar as variables de contorno do ficheiro .env
@@ -138,13 +139,13 @@ def reservar(albergue, noite, peregrino):
 
     # Script Lua: comproba e desconta a praza atomicamente
     script = """
-        local dispoñibles = redis.call('GET', KEYS[1])
+        local disponibles = redis.call('GET', KEYS[1])
 
-        if not dispoñibles then
+        if not disponibles then
             return -1
         end
 
-        if tonumber(dispoñibles) <= 0 then
+        if tonumber(disponibles) <= 0 then
             return 0
         end
 
@@ -184,6 +185,10 @@ def reservar(albergue, noite, peregrino):
                     VALUES (%s, %s, %s);
                 """, (albergue, peregrino, noite))
 
+        # A reserva xa está confirmada en PostgreSQL.
+        # Invalidamos a caché correspondente a esa noite.
+        invalidar_cache_albergues(noite)
+
         return True
 
     except Exception:
@@ -194,3 +199,71 @@ def reservar(albergue, noite, peregrino):
     finally:
         if conn is not None:
             conn.close()
+
+def albergues_con_prazas_libres(camino, noite, ttl=60):
+    chave = f"cache:albergues_libres:{camino}:{noite.isoformat()}"
+
+    # 1. Comprobar se o resultado xa está en Redis
+    datos_cache = r.get(chave)
+
+    if datos_cache is not None:
+        print("CACHE HIT: resultado obtido de Redis")
+        return json.loads(datos_cache)
+
+    print("CACHE MISS: consultando PostgreSQL")
+
+    # 2. Se non está na caché, consultar PostgreSQL
+    conn = psycopg2.connect(**PG_CONFIG)
+
+    try:
+        cur = conn.cursor()
+
+        cur.execute("""
+            SELECT
+                a.id,
+                a.nome,
+                a.concello,
+                a.prazas,
+                COUNT(r.id) AS ocupadas,
+                a.prazas - COUNT(r.id) AS prazas_libres
+            FROM albergues a
+            LEFT JOIN reservas r
+                ON r.albergue_id = a.id
+                AND r.data = %s
+            WHERE a.camino = %s
+            GROUP BY a.id, a.nome, a.concello, a.prazas
+            HAVING a.prazas - COUNT(r.id) > 0
+            ORDER BY a.nome
+        """, (noite, camino))
+
+        filas = cur.fetchall()
+
+        resultado = [
+            {
+                "id": fila[0],
+                "nome": fila[1],
+                "concello": fila[2],
+                "capacidade": fila[3],
+                "ocupadas": fila[4],
+                "prazas_libres": fila[5]
+            }
+            for fila in filas
+        ]
+
+        # 3. Gardar o resultado en Redis co TTL indicado
+        r.setex(
+            chave,
+            ttl,
+            json.dumps(resultado, ensure_ascii=False)
+        )
+
+        return resultado
+
+    finally:
+        conn.close()
+
+def invalidar_cache_albergues(noite):
+    patron = f"cache:albergues_libres:*:{noite.isoformat()}"
+
+    for chave in r.scan_iter(match=patron):
+        r.delete(chave)

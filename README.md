@@ -236,3 +236,53 @@ A consulta devolve un documento coa seguinte estrutura:
 ```
 
 **Conclusión:** a comprobación confirma que MongoDB contén a colección `fichas` cos 40 documentos esperados. Os datos inclúen información dos albergues, servizos, horarios e contacto, empregando estruturas anidadas e arrays para representar información flexible.
+
+### Proba de concorrencia con Redis
+
+**Escenario inicial**
+
+Para realizar a proba seleccionouse o albergue A Estrela, situado en Pedrafita do Cebreiro (ID 1), para a noite do 1 de maio de 2027.
+
+Antes de iniciar a proba, consultáronse os datos de PostgreSQL, obténdose os seguintes resultados:
+
+- Capacidade total: 23 prazas.
+- Reservas existentes: 3.
+- Ocupación inicial: 3 prazas.
+- Prazas dispoñibles: 20.
+
+**Execución da proba**
+
+Lanzáronse 50 intentos de reserva simultáneos mediante `ThreadPoolExecutor`, utilizando un máximo de 50 fíos de execución.
+
+**Resultados obtidos**
+
+- Reservas aceptadas: 20.
+- Reservas rexeitadas: 30.
+- Erros: 0.
+- Ocupación final: 23 de 23 prazas.
+- Prazas dispoñibles ao finalizar: 0.
+
+**Conclusión**
+
+A proba superouse satisfactoriamente. Redis xestionou correctamente as solicitudes concorrentes mediante a execución atómica do script Lua.
+
+Aceptáronse exactamente as 20 reservas correspondentes ás prazas dispoñibles e rexeitáronse as outras 30, sen superar en ningún momento a capacidade máxima do albergue.
+
+Os datos finais de PostgreSQL confirman que o albergue rematou cun total de 23 reservas para unha capacidade de 23 prazas, polo que non se produciu ningunha sobrevenda.
+
+
+### Proba de caché con Redis
+
+Implementouse unha caché en Redis para almacenar o resultado dunha consulta frecuente: os albergues do Camiño Francés que dispoñen de prazas libres nunha noite determinada.
+
+Estableceuse un TTL de **60 segundos**, de xeito que os datos se eliminan automaticamente da caché ao transcorrer ese tempo.
+
+**Resultados da proba:**
+
+- Primeira consulta: `CACHE MISS`. Consultouse PostgreSQL e atopáronse 9 albergues.
+- O resultado gardouse correctamente en Redis.
+- TTL inicial: 60 segundos.
+- Segunda consulta: `CACHE HIT`. Os datos recuperáronse directamente de Redis.
+- Os resultados das dúas consultas foron idénticos.
+
+**Conclusión:** a caché funciona correctamente, evitando consultas repetidas a PostgreSQL durante o período de validez dos datos. Ademais, a caché invalídase cando se confirma unha nova reserva para esa noite.
