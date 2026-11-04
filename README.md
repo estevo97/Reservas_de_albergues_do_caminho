@@ -1,5 +1,7 @@
 # Reservas de albergues do camiño
 
+Autores: Estevo e Roberto
+
 ## Xeración de datos
 
 O ficheiro `src/xera_datos.py` contén o xerador de datos ficticios para a rede de albergues **Camiño Aberto**. Permite crear información de albergues, peregrinos, reservas e fichas detalladas, empregando as bibliotecas `random` e `Faker`. Faker é unha librería que nos permite crear datos ficticios (nomes, apelidos, emails, etc.)
@@ -237,6 +239,8 @@ A consulta devolve un documento coa seguinte estrutura:
 
 **Conclusión:** a comprobación confirma que MongoDB contén a colección `fichas` cos 40 documentos esperados. Os datos inclúen información dos albergues, servizos, horarios e contacto, empregando estruturas anidadas e arrays para representar información flexible.
 
+## 4.3 Redis
+
 ### Proba de concorrencia con Redis
 
 **Escenario inicial**
@@ -287,6 +291,31 @@ Estableceuse un TTL de **60 segundos**, de xeito que os datos se eliminan automa
 
 **Conclusión:** a caché funciona correctamente, evitando consultas repetidas a PostgreSQL durante o período de validez dos datos. Ademais, a caché invalídase cando se confirma unha nova reserva para esa noite.
 
+## 4.4 Proba de restauración
+
+Para verificar a validez das copias de seguridade, realizouse unha proba de restauración en bases de datos independentes, sen modificar os datos orixinais.
+
+**PostgreSQL:**
+- Restaurouse o ficheiro `postgres.sql` mediante `psql`.
+- Recuperáronse as tres táboas: `albergues`, `peregrinos` e `reservas`.
+- Comparáronse os rexistros coa base de datos orixinal.
+
+**MongoDB:**
+- Restaurouse a colección `fichas` mediante `mongorestore`.
+- Recuperáronse correctamente os 40 documentos.
+- Comparouse o número de documentos coa colección orixinal.
+
+**Resultados:**
+
+| Táboa / colección | Orixinal | Restaurado |
+|---|---:|---:|
+| albergues | 40 | 40 |
+| peregrinos | 1.500 | 1.500 |
+| reservas | 5.000 | 5.000 |
+| fichas (MongoDB) | 40 | 40 |
+
+**Conclusión:** a proba superouse satisfactoriamente. As copias de seguridade permiten recuperar os datos de PostgreSQL e MongoDB sen perdas.
+
 ## 4.5. Medicións de rendemento: PostgreSQL e Redis
 
 Para avaliar o rendemento do sistema de consulta de dispoñibilidade, realizouse unha proba comparativa entre PostgreSQL e Redis, co obxectivo de comprobar a mellora que proporciona o uso dunha caché.
@@ -333,5 +362,9 @@ Pola contra, cando se produce un CACHE HIT, os datos recupéranse directamente d
 
 Conclusión: a utilización de Redis como sistema de caché reduce considerablemente os tempos de resposta.
 
+## 4.6 Uso de intelixencia artificial
 
+Empregouse intelixencia artificial como ferramenta de apoio para a xeración do código dos ficheiros `.py` do proxecto.
+
+A documentación (`README.md`) foi elaborada principalmente de forma manual, aínda que se utilizou IA como apoio para xerar e mellorar algunhas partes do formato Markdown, especialmente táboas e elementos de presentación.
 
