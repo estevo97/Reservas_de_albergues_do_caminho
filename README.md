@@ -50,8 +50,8 @@ Os resultados móstranse por consola, indicando o número de rexistros xerados e
 Para comprobar que o xerador produce os mesmos datos cando se utiliza a mesma semente aleatoria, executouse dúas veces co parámetro `--semente 7` e coa opción `--sen-carga`, que evita a inserción dos datos nas bases de datos.
 
 ```bash
-python -m src.xera_datos --sen-carga --semente 7 > a.txt
-python -m src.xera_datos --sen-carga --semente 7 > b.txt
+python -m src.xera_datos --sen-carga --semente 7 > results/a.txt
+python -m src.xera_datos --sen-carga --semente 7 > results/b.txt
 ```
 
 A continuación, comparáronse os dous ficheiros mediante o comando `diff`:
@@ -286,3 +286,52 @@ Estableceuse un TTL de **60 segundos**, de xeito que os datos se eliminan automa
 - Os resultados das dúas consultas foron idénticos.
 
 **Conclusión:** a caché funciona correctamente, evitando consultas repetidas a PostgreSQL durante o período de validez dos datos. Ademais, a caché invalídase cando se confirma unha nova reserva para esa noite.
+
+## 4.5. Medicións de rendemento: PostgreSQL e Redis
+
+Para avaliar o rendemento do sistema de consulta de dispoñibilidade, realizouse unha proba comparativa entre PostgreSQL e Redis, co obxectivo de comprobar a mellora que proporciona o uso dunha caché.
+
+As medicións realízanse mediante o script `tests/medicions.py`, que reutiliza a función `albergues_con_prazas_libres()` definida en `app.py`.
+
+### Procedemento
+
+Seleccionouse o Camiño Francés e a noite do 1 de maio de 2027 como referencia para todas as consultas.
+
+Realizáronse 50 repeticións en cada un dos dous escenarios:
+
+- **CACHE MISS (PostgreSQL + Redis):** elimínase previamente a entrada correspondente da caché. A aplicación consulta PostgreSQL, recupera os datos de dispoñibilidade e almacena o resultado en Redis.
+- **CACHE HIT (Redis):** a aplicación recupera directamente de Redis o resultado previamente almacenado, sen necesidade de consultar PostgreSQL.
+
+Para medir os tempos utilizouse `time.perf_counter()`, expresando os resultados en milisegundos. Calculáronse a media, a mediana, o mínimo e o máximo dos tempos rexistrados.
+
+### Execución
+
+Execútase o script desde a raíz do proxecto, co contorno virtual activado:
+
+```bash
+python -m tests.medicions
+```
+
+### Resultados obtidos
+
+As medicións realizadas proporcionaron os seguintes resultados:
+
+| Métrica | CACHE MISS (PostgreSQL + Redis) | CACHE HIT (Redis) |
+|---|---:|---:|
+| Media | 30,687 ms | 0,666 ms |
+| Mediana | 26,915 ms | 0,651 ms |
+| Mínimo | 20,205 ms | 0,520 ms |
+| Máximo | 89,132 ms | 0,983 ms |
+
+### Análise dos resultados
+
+Os resultados amosan unha diferenza considerable entre ambos os escenarios. A consulta con CACHE MISS presenta un tempo medio de 30,687 ms, xa que require acceder a PostgreSQL e almacenar posteriormente o resultado en Redis.
+
+Pola contra, cando se produce un CACHE HIT, os datos recupéranse directamente de Redis, cun tempo medio de apenas 0,666 ms.
+
+- A consulta de datos en caché é **46 veces máis rápida**.
+
+Conclusión: a utilización de Redis como sistema de caché reduce considerablemente os tempos de resposta.
+
+
+
